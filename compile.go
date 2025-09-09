@@ -16,7 +16,7 @@ type Compiler struct {
 	Incremental     bool   //是否增量编译
 	SingleFile      string // 是否只编译一个文件
 	DebugMode       bool   // 开启调试模式
-	RemoveGenerated string // 移除生成的文件目录
+	RemoveGenerated bool   // 移除生成的文件目录
 
 	SrcPath  string // 源文件路径
 	DestPath string // 目标文件路径
@@ -61,6 +61,16 @@ func (c *Compiler) Compile() {
 			log.Fatal(err)
 		}
 		path = filepath.Join(cwd, path)
+		c.SrcPath = path
+	}
+	destPath := c.DestPath
+	if !filepath.IsAbs(destPath) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			log.Fatal(err)
+		}
+		destPath = filepath.Join(cwd, destPath)
+		c.DestPath = destPath
 	}
 
 	// 如果根目录是cmd，取父级目录
@@ -74,9 +84,9 @@ func (c *Compiler) Compile() {
 		log.Fatal(err)
 	}
 
-	if removeGenerated != "" {
+	if removeGenerated && c.SingleFile == "" {
 		// 移除该目录下所有_gen.go文件
-		_ = filepath.Walk(removeGenerated, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(c.DestPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -143,7 +153,9 @@ func (c *Compiler) processGoxFile(goxPath string, incremental bool, debugMode bo
 	fmt.Printf("处理文件: %s\n", goxPath)
 
 	// 生成目标文件路径
-	goPath := strings.TrimSuffix(goxPath, ".gox.go") + "_gen.go"
+	fileName := filepath.Base(goxPath)
+	fileName = strings.TrimSuffix(fileName, ".gox.go") + "_gen.go"
+	goPath := filepath.Join(c.DestPath, fileName)
 
 	// 增量编译检查
 	if incremental {
@@ -184,14 +196,6 @@ func (c *Compiler) processGoxFile(goxPath string, incremental bool, debugMode bo
 	}
 
 	// goPath = strings.Replace(goPath, "v3_source", "v3", 1)
-	goPath = c.DestPath
-	if !filepath.IsAbs(goPath) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			log.Fatal(err)
-		}
-		goPath = filepath.Join(cwd, goPath)
-	}
 
 	// 写入目标文件
 	if err := os.WriteFile(goPath, generated, 0644); err != nil {
